@@ -1186,16 +1186,46 @@ static void draw_holdarea(int stx, int edx, int sty, int edy) {
 }
 
 static void draw_controlsarea(int stx, int edx, int sty, int edy) {
-        static const char *const msg = "x/z:rotate c:hold p:pause q:quit";
-        // TODO: keys in bold, description normal
-        
-        int msglen = strlen(msg);
+        int msglen = 32; // x/z:rotate c:hold p:pause q:quit
         int total_space = edx-stx;
         int spare_space = total_space - msglen;
         int margin = spare_space / 2;
                 
         draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
-        mvprintw(sty, stx + margin, msg);
+
+        int i=0;
+
+        // TODO: DRY this thing
+        
+        attron(A_BOLD);
+        mvaddch(sty, stx + margin + i, 'x'); i++;
+        attroff(A_BOLD);
+        
+        mvaddch(sty, stx + margin + i, '/'); i++;
+        
+        attron(A_BOLD);
+        mvaddch(sty, stx + margin + i, 'z'); i++;
+        attroff(A_BOLD);
+        
+        mvprintw(sty, stx + margin + i, ":rotate "); i+=strlen(":rotate ");
+        
+        attron(A_BOLD);
+        mvaddch(sty, stx + margin + i, 'c'); i++;
+        attroff(A_BOLD);
+        
+        mvprintw(sty, stx + margin + i, ":hold "); i+=strlen(":hold ");
+        
+        attron(A_BOLD);
+        mvaddch(sty, stx + margin + i, 'p'); i++;
+        attroff(A_BOLD);
+        
+        mvprintw(sty, stx + margin + i, ":pause "); i+=strlen(":pause ");
+        
+        attron(A_BOLD);
+        mvaddch(sty, stx + margin + i, 'q'); i++;
+        attroff(A_BOLD);
+        
+        mvprintw(sty, stx + margin + i, ":pause "); i+=strlen(":quit");
 }
 
 static void endwin_wrapper(void) {
@@ -1613,3 +1643,4 @@ int main(void) {
 // TODO: Improve visuals? (make actual pixels 2x1)
 // TODO: Better colors
 // TODO: High scores system
+// TODO: A hard drop should not let you keep moving the piece
