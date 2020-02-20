@@ -1011,8 +1011,7 @@ static enum input_type get_player_input(int c) {
 
         case KEY_RIGHT:
                 return INPUT_RIGHT;
-
-        case KEY_F(2):
+                
         case 'P':
         case 'p':
                 return INPUT_PAUSE;
@@ -1037,16 +1036,16 @@ static void process_input(void) {
                 return;
         }
 
-        if (c == 'q' || c == 'Q')
+        enum input_type t = get_player_input(c);
+
+        if (t == INPUT_EXIT)
                 exit(EXIT_SUCCESS);
 
-        if (c == KEY_F(2))
+        if (t == INPUT_PAUSE)
                 paused = !paused;
 
         if (paused)
                 return;
-
-        enum input_type t = get_player_input(c);
         
         switch(t) {
         case INPUT_CLOCKWISE_ROTATION:
@@ -1184,6 +1183,19 @@ static void draw_holdarea(int stx, int edx, int sty, int edy) {
         mvprintw(sty+0, stx+1, "Hold");
         if (current_held_piece != TETRIMINO_TEST)
                 draw_tetrimino(current_held_piece, SPAWN_ROTATED, stx+3, sty+1);
+}
+
+static void draw_controlsarea(int stx, int edx, int sty, int edy) {
+        static const char *const msg = "x/z:rotate c:hold p:pause q:quit";
+        // TODO: keys in bold, description normal
+        
+        int msglen = strlen(msg);
+        int total_space = edx-stx;
+        int spare_space = total_space - msglen;
+        int margin = spare_space / 2;
+                
+        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
+        mvprintw(sty, stx + margin, msg);
 }
 
 static void endwin_wrapper(void) {
@@ -1572,11 +1584,17 @@ int main(void) {
                 int hd_sty = pf_sty_visible;
                 int hd_edy = hd_sty + HOLD_RECTANGLE_DRAW_Y;
 
+                int cs_stx = hd_stx;
+                int cs_edx = nx_edx;
+                int cs_sty = pf_edy + 1;
+                int cs_edy = cs_sty + 1;
+
                 draw_background(max_x, max_y);
                 draw_playfield(pf_stx, pf_edx, pf_sty, pf_edy);
                 draw_nextarea(nx_stx, nx_edx, nx_sty, nx_edy);
                 draw_scorearea(sc_stx, sc_edx, sc_sty, sc_edy);
                 draw_holdarea(hd_stx, hd_edx, hd_sty, hd_edy);
+                draw_controlsarea(cs_stx, cs_edx, cs_sty, cs_edy);
 
                 process_input();
                 step();
@@ -1591,3 +1609,7 @@ int main(void) {
 // TODO: Game over screen
 // TODO: Instructions when calling with -h or help or --help
 // TODO: Version information and other memes (-v --version)
+// TODO: Add paused screen (should hide game state)
+// TODO: Improve visuals? (make actual pixels 2x1)
+// TODO: Better colors
+// TODO: High scores system
