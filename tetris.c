@@ -14,13 +14,13 @@
 #define TETRIS_PLAYFIELD_X 10
 #define TETRIS_PLAYFIELD_Y 40 // this will be drawn as half this value but internally as this value
 
-#define NEXT_RECTANGLE_DRAW_X 10
+#define NEXT_RECTANGLE_DRAW_X 12
 #define NEXT_RECTANGLE_DRAW_Y 16
 
-#define SCORE_RECTANGLE_DRAW_X 10
+#define SCORE_RECTANGLE_DRAW_X 12
 #define SCORE_RECTANGLE_DRAW_Y 2
 
-#define HOLD_RECTANGLE_DRAW_X 10
+#define HOLD_RECTANGLE_DRAW_X 12
 #define HOLD_RECTANGLE_DRAW_Y 6
 
 #define DRAWING_CHAR '#'
@@ -460,8 +460,11 @@ static void draw_tetrimino(enum tetrimino t, enum tetrimino_rotation r, int x, i
         
         for (int j=0; j<4; j++) {
                 for (int i=0; i<4; i++) {
-                        if (piece_shapes[t][r][j][i])
-                                mvaddch(y+j, x+i, DRAWING_CHAR);
+                        if (piece_shapes[t][r][j][i]) {
+                                mvaddch(y+j, x+i*2, DRAWING_CHAR);
+                                mvaddch(y+j, x+i*2+1, DRAWING_CHAR);
+                        }
+                        
                 }
         }
 
@@ -1154,7 +1157,8 @@ static void draw_playfield(int stx, int edx, int sty, int edy) {
                         }
                         
                         enable_color(color, shadow);
-                        mvaddch(sty+j, stx+i, DRAWING_CHAR);
+                        mvaddch(sty+j, stx+i*2, DRAWING_CHAR);
+                        mvaddch(sty+j, stx+i*2+1, DRAWING_CHAR);
                         disable_color(color, shadow);
                 }
         }
@@ -1165,9 +1169,9 @@ static void draw_nextarea(int stx, int edx, int sty, int edy) {
         
         mvprintw(sty+0, stx+1, "Next");
 
-        draw_tetrimino(spawn_order[spawn_next_i], SPAWN_ROTATED, stx+3, sty+1);
-        draw_tetrimino(spawn_order[spawn_next_i+1], SPAWN_ROTATED, stx+3, sty+6);
-        draw_tetrimino(spawn_order[spawn_next_i+2], SPAWN_ROTATED, stx+3, sty+11);
+        draw_tetrimino(spawn_order[spawn_next_i], SPAWN_ROTATED, stx+3, sty+2);
+        draw_tetrimino(spawn_order[spawn_next_i+1], SPAWN_ROTATED, stx+3, sty+7);
+        draw_tetrimino(spawn_order[spawn_next_i+2], SPAWN_ROTATED, stx+3, sty+12);
 }
 
 static void draw_scorearea(int stx, int edx, int sty, int edy) {
@@ -1182,7 +1186,7 @@ static void draw_holdarea(int stx, int edx, int sty, int edy) {
 
         mvprintw(sty+0, stx+1, "Hold");
         if (current_held_piece != TETRIMINO_TEST)
-                draw_tetrimino(current_held_piece, SPAWN_ROTATED, stx+3, sty+1);
+                draw_tetrimino(current_held_piece, SPAWN_ROTATED, stx+3, sty+2);
 }
 
 static void draw_controlsarea(int stx, int edx, int sty, int edy) {
@@ -1599,7 +1603,8 @@ int main(void) {
 
                 int pf_sty_visible = pf_sty + TETRIS_PLAYFIELD_Y/2;
 
-                int sc_stx = pf_edx + 3;
+                // Take into account that playfield is drawn as twice its actual size
+                int sc_stx = pf_edx + TETRIS_PLAYFIELD_X + 3;
                 int sc_edx = sc_stx + SCORE_RECTANGLE_DRAW_X;
                 int sc_sty = pf_sty_visible;
                 int sc_edy = sc_sty + SCORE_RECTANGLE_DRAW_Y;
@@ -1640,7 +1645,7 @@ int main(void) {
 // TODO: Instructions when calling with -h or help or --help
 // TODO: Version information and other memes (-v --version)
 // TODO: Add paused screen (should hide game state)
-// TODO: Improve visuals? (make actual pixels 2x1)
 // TODO: Better colors
 // TODO: High scores system
 // TODO: A hard drop should not let you keep moving the piece
+// TODO: Keep falling despite moving laterally? (check standard)
