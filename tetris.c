@@ -1229,7 +1229,7 @@ static void draw_controlsarea(int stx, int edx, int sty, int edy) {
         mvaddch(sty, stx + margin + i, 'q'); i++;
         attroff(A_BOLD);
         
-        mvprintw(sty, stx + margin + i, ":pause "); i+=strlen(":quit");
+        mvprintw(sty, stx + margin + i, ":quit "); i+=strlen(":quit");
 }
 
 static void endwin_wrapper(void) {
