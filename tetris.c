@@ -533,6 +533,7 @@ static struct coord current_piece_location = { 5, 20 };
 static struct coord current_shadow_location;
 
 static bool can_hold = true;
+static bool hard_dropped = false;
 
 static bool collision(enum tetrimino piece, enum tetrimino_rotation rotation, struct coord location) {
         for (int j=0; j<4; j++) {
@@ -607,6 +608,8 @@ static void step(void) {
                 us_until_next_step = STEP_TIME_US;
                 current_piece_location.y += 1;
                 if (collision(current_piece, current_piece_rotation, current_piece_location)) {
+                        hard_dropped = false;
+                        
                         // Detect T-spin
                         if (current_piece == TETRIMINO_T && last_movement_was_spin) {
                                 int x = current_piece_location.x;
@@ -1100,80 +1103,83 @@ static void process_input(void) {
 
         if (paused)
                 return;
-        
-        switch(t) {
-        case INPUT_CLOCKWISE_ROTATION:
-                if (rotate((current_piece_rotation + 1) % 4)) {
-                        last_movement_was_spin = true;
+
+        if (!hard_dropped) {
+                switch(t) {
+                case INPUT_CLOCKWISE_ROTATION:
+                        if (rotate((current_piece_rotation + 1) % 4)) {
+                                last_movement_was_spin = true;
+                                us_until_next_step = STEP_TIME_US;
+                                update_shadow_location();
+                        }
+                        break;
+                
+                case INPUT_HARD_DROP:
+                        while (!collision(current_piece, current_piece_rotation, current_piece_location)) {
+                                current_piece_location.y++;
+                        }
+                        current_piece_location.y--;
                         us_until_next_step = STEP_TIME_US;
-                        update_shadow_location();
-                }
-                break;
+                        hard_dropped = true;
+                        break;
                 
-        case INPUT_HARD_DROP:
-                while (!collision(current_piece, current_piece_rotation, current_piece_location)) {
-                        current_piece_location.y++;
-                }
-                current_piece_location.y--;
-                us_until_next_step = STEP_TIME_US;
-                break;
+                case INPUT_HOLD:
+                        if (can_hold) {
+                                enum tetrimino held = current_held_piece;
+                                current_held_piece = current_piece;
+                                if (held == TETRIMINO_TEST)
+                                        current_piece = next_random_piece();
+                                else
+                                        current_piece = held;
+                                current_piece_rotation = SPAWN_ROTATED;
+                                current_piece_location.x = 5;
+                                current_piece_location.y = 20;
+                                us_until_next_step = STEP_TIME_US;
+                                can_hold = false;
+                                last_movement_was_spin = false;
+                                update_shadow_location();
+                        }
+                        break;
                 
-        case INPUT_HOLD:
-                if (can_hold) {
-                        enum tetrimino held = current_held_piece;
-                        current_held_piece = current_piece;
-                        if (held == TETRIMINO_TEST)
-                                current_piece = next_random_piece();
+                case INPUT_COUNTERCLOCKWISE_ROTATION:
+                        if (rotate((current_piece_rotation - 1) % 4)) {
+                                last_movement_was_spin = true;
+                                us_until_next_step = STEP_TIME_US;
+                                update_shadow_location();
+                        }
+                        break;
+                
+                case INPUT_SOFT_DROP:
+                        current_piece_location.y += 1;
+                        if (collision(current_piece, current_piece_rotation, current_piece_location))
+                                current_piece_location.y -= 1;
                         else
-                                current_piece = held;
-                        current_piece_rotation = SPAWN_ROTATED;
-                        current_piece_location.x = 5;
-                        current_piece_location.y = 20;
-                        us_until_next_step = STEP_TIME_US;
-                        can_hold = false;
-                        last_movement_was_spin = false;
-                        update_shadow_location();
-                }
-                break;
+                                us_until_next_step = STEP_TIME_US;
+                        break;
                 
-        case INPUT_COUNTERCLOCKWISE_ROTATION:
-                if (rotate((current_piece_rotation - 1) % 4)) {
-                        last_movement_was_spin = true;
-                        us_until_next_step = STEP_TIME_US;
-                        update_shadow_location();
-                }
-                break;
-                
-        case INPUT_SOFT_DROP:
-                current_piece_location.y += 1;
-                if (collision(current_piece, current_piece_rotation, current_piece_location))
-                        current_piece_location.y -= 1;
-                else
-                        us_until_next_step = STEP_TIME_US;
-                break;
-                
-        case INPUT_LEFT:
-                current_piece_location.x -= 1;
-                if (collision(current_piece, current_piece_rotation, current_piece_location)) {
-                        current_piece_location.x += 1;
-                } else {
-                        us_until_next_step = STEP_TIME_US;
-                        update_shadow_location();
-                }
-                break;
-                
-        case INPUT_RIGHT:
-                current_piece_location.x += 1;
-                if (collision(current_piece, current_piece_rotation, current_piece_location)) {
+                case INPUT_LEFT:
                         current_piece_location.x -= 1;
-                } else {
-                        us_until_next_step = STEP_TIME_US;
-                        update_shadow_location();
-                }
-                break;
+                        if (collision(current_piece, current_piece_rotation, current_piece_location)) {
+                                current_piece_location.x += 1;
+                        } else {
+                                us_until_next_step = STEP_TIME_US;
+                                update_shadow_location();
+                        }
+                        break;
                 
-        default:
-                return;
+                case INPUT_RIGHT:
+                        current_piece_location.x += 1;
+                        if (collision(current_piece, current_piece_rotation, current_piece_location)) {
+                                current_piece_location.x -= 1;
+                        } else {
+                                us_until_next_step = STEP_TIME_US;
+                                update_shadow_location();
+                        }
+                        break;
+                
+                default:
+                        return;
+                }
         }
 
         us_until_next_read = INPUT_TIME_US;
@@ -1716,5 +1722,4 @@ int main(void) {
 // TODO: Add paused screen (should hide game state)
 // TODO: Better colors
 // TODO: High scores system
-// TODO: A hard drop should not let you keep moving the piece
-// TODO: Keep falling despite moving laterally? (check standard)
+// TODO: Should keep falling despite moving laterally
