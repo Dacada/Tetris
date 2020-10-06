@@ -1109,7 +1109,7 @@ static void process_input(void) {
                 case INPUT_CLOCKWISE_ROTATION:
                         if (rotate((current_piece_rotation + 1) % 4)) {
                                 last_movement_was_spin = true;
-                                us_until_next_step = STEP_TIME_US;
+                                //us_until_next_step = STEP_TIME_US;
                                 update_shadow_location();
                         }
                         break;
@@ -1144,7 +1144,7 @@ static void process_input(void) {
                 case INPUT_COUNTERCLOCKWISE_ROTATION:
                         if (rotate((current_piece_rotation - 1) % 4)) {
                                 last_movement_was_spin = true;
-                                us_until_next_step = STEP_TIME_US;
+                                //us_until_next_step = STEP_TIME_US;
                                 update_shadow_location();
                         }
                         break;
@@ -1162,7 +1162,7 @@ static void process_input(void) {
                         if (collision(current_piece, current_piece_rotation, current_piece_location)) {
                                 current_piece_location.x += 1;
                         } else {
-                                us_until_next_step = STEP_TIME_US;
+                                //us_until_next_step = STEP_TIME_US;
                                 update_shadow_location();
                         }
                         break;
@@ -1172,7 +1172,7 @@ static void process_input(void) {
                         if (collision(current_piece, current_piece_rotation, current_piece_location)) {
                                 current_piece_location.x -= 1;
                         } else {
-                                us_until_next_step = STEP_TIME_US;
+                                //us_until_next_step = STEP_TIME_US;
                                 update_shadow_location();
                         }
                         break;
@@ -1722,4 +1722,3 @@ int main(void) {
 // TODO: Add paused screen (should hide game state)
 // TODO: Better colors
 // TODO: High scores system
-// TODO: Should keep falling despite moving laterally
