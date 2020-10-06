@@ -455,14 +455,65 @@ static const bool piece_shapes[8][4][4][4] = {
         }
 };
 
-static void draw_tetrimino(enum tetrimino t, enum tetrimino_rotation r, int x, int y) {
+static void decide_rotation_offset_draw_tetrimino(enum tetrimino t,
+                                                  enum tetrimino_rotation *r, int *ox, int *oy) {
+        switch(t) {
+        case TETRIMINO_TEST:
+                *r = SPAWN_ROTATED;
+                *ox = 0;
+                *oy = 0;
+                break;
+        case TETRIMINO_I:
+                *r = SPAWN_ROTATED;
+                *ox = -2;
+                *oy = 1;
+                break;
+        case TETRIMINO_O:
+                *r = SPAWN_ROTATED;
+                *ox = -2;
+                *oy = 1;
+                break;
+        case TETRIMINO_T:
+                *r = SPAWN_ROTATED;
+                *ox = -1;
+                *oy = 1;
+                break;
+        case TETRIMINO_S:
+                *r = SPAWN_ROTATED;
+                *ox = -1;
+                *oy = 1;
+                break;
+        case TETRIMINO_Z:
+                *r = SPAWN_ROTATED;
+                *ox = -1;
+                *oy = 1;
+                break;
+        case TETRIMINO_J:
+                *r = SPAWN_ROTATED;
+                *ox = -1;
+                *oy = 1;
+                break;
+        case TETRIMINO_L:
+                *r = SPAWN_ROTATED;
+                *ox = -1;
+                *oy = 1;
+                break;
+        }
+}
+
+static void draw_tetrimino(enum tetrimino t,int x, int y) {
         enable_color(piece_color(t), false);
+        
+        enum tetrimino_rotation r = SPAWN_ROTATED;
+        int ox = 0;
+        int oy = 0;
+        decide_rotation_offset_draw_tetrimino(t, &r, &ox, &oy);
         
         for (int j=0; j<4; j++) {
                 for (int i=0; i<4; i++) {
                         if (piece_shapes[t][r][j][i]) {
-                                mvaddch(y+j, x+i*2, DRAWING_CHAR);
-                                mvaddch(y+j, x+i*2+1, DRAWING_CHAR);
+                                mvaddch(y+j+oy, x+i*2+ox, DRAWING_CHAR);
+                                mvaddch(y+j+oy, x+i*2+1+ox, DRAWING_CHAR);
                         }
                         
                 }
@@ -1169,9 +1220,20 @@ static void draw_nextarea(int stx, int edx, int sty, int edy) {
         
         mvprintw(sty+0, stx+1, "Next");
 
-        draw_tetrimino(spawn_order[spawn_next_i], SPAWN_ROTATED, stx+3, sty+2);
-        draw_tetrimino(spawn_order[spawn_next_i+1], SPAWN_ROTATED, stx+3, sty+7);
-        draw_tetrimino(spawn_order[spawn_next_i+2], SPAWN_ROTATED, stx+3, sty+12);
+        int midx = stx + (edx - stx)/2;
+        int midy = sty + (edy - sty)/2;
+        int midy1 = sty + (midy - sty)/2;
+        int midy2 = midy;
+        int midy3 = midy + (edy - midy)/2;
+
+        int tstx = midx - 2;
+        int tsty1 = midy1 - 2;
+        int tsty2 = midy2 - 2;
+        int tsty3 = midy3 - 2;
+
+        draw_tetrimino(spawn_order[spawn_next_i], tstx, tsty1);
+        draw_tetrimino(spawn_order[spawn_next_i+1], tstx, tsty2);
+        draw_tetrimino(spawn_order[spawn_next_i+2], tstx, tsty3);
 }
 
 static void draw_scorearea(int stx, int edx, int sty, int edy) {
@@ -1185,8 +1247,13 @@ static void draw_holdarea(int stx, int edx, int sty, int edy) {
         draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
 
         mvprintw(sty+0, stx+1, "Hold");
-        if (current_held_piece != TETRIMINO_TEST)
-                draw_tetrimino(current_held_piece, SPAWN_ROTATED, stx+3, sty+2);
+        if (current_held_piece != TETRIMINO_TEST) {
+                int midx = stx + (edx - stx)/2;
+                int midy = sty + (edy - sty)/2;
+                int tstx = midx - 2;
+                int tsty = midy - 2;
+                draw_tetrimino(current_held_piece, tstx, tsty);
+        }
 }
 
 static void draw_controlsarea(int stx, int edx, int sty, int edy) {
@@ -1595,8 +1662,10 @@ int main(void) {
                 int max_x, max_y;
                 getmaxyx(stdscr, max_y, max_x); // it's a macro
 
-                int pf_stx = max_x/2 - TETRIS_PLAYFIELD_X/2;
-                int pf_edx = max_x/2 + TETRIS_PLAYFIELD_X/2;
+                // center horizontally as if it was double its actual width
+                int pf_stx = max_x/2 - TETRIS_PLAYFIELD_X;
+                int pf_edx = max_x/2 + TETRIS_PLAYFIELD_X;
+                
                 // center vertically as if it was half its actual length
                 int pf_sty = max_y/2 - TETRIS_PLAYFIELD_Y/2 - TETRIS_PLAYFIELD_Y/4;
                 int pf_edy = max_y/2 + TETRIS_PLAYFIELD_Y/2 - TETRIS_PLAYFIELD_Y/4;
@@ -1604,7 +1673,7 @@ int main(void) {
                 int pf_sty_visible = pf_sty + TETRIS_PLAYFIELD_Y/2;
 
                 // Take into account that playfield is drawn as twice its actual size
-                int sc_stx = pf_edx + TETRIS_PLAYFIELD_X + 3;
+                int sc_stx = pf_edx + 3;
                 int sc_edx = sc_stx + SCORE_RECTANGLE_DRAW_X;
                 int sc_sty = pf_sty_visible;
                 int sc_edy = sc_sty + SCORE_RECTANGLE_DRAW_Y;
