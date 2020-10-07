@@ -24,6 +24,9 @@
 #define HOLD_RECTANGLE_DRAW_X 12
 #define HOLD_RECTANGLE_DRAW_Y 6
 
+#define GAMEOVER_RECTANGLE_DRAW_X 60
+#define GAMEOVER_RECTANGLE_DRAW_Y 8
+
 #define DRAWING_CHAR '#'
 
 #define SINGLE_SCORE 100
@@ -353,32 +356,6 @@ static enum tetrimino char_to_piece(char c) {
 
 static enum tetrimino current_held_piece = TETRIMINO_TEST;
 
-static enum tetrimino next_random_piece(void) {
-        if (spawn_next_i == 7) {
-                spawn_next_i = 0;
-                memcpy(spawn_order, spawn_order+7, 7*sizeof(enum tetrimino));
-        }
-                
-        if (spawn_next_i == 0)
-                shuffle(spawn_order+7, 7);
-                
-        return spawn_order[spawn_next_i++];
-}
-
-static void draw(int stx, int edx, int sty, int edy, enum tetris_color c) {
-        enable_color(c, false);
-        for (int x=stx; x<edx; x++) {
-                for (int y=sty; y<edy; y++) {
-                        mvaddch(y, x, DRAWING_CHAR);
-                }
-        }
-        disable_color(c, false);
-}
-
-static void draw_background(int max_x, int max_y) {
-        draw(0, max_x, 0, max_y, TETRIS_COLOR_WHITE);
-}
-
 static const bool piece_shapes[8][4][4][4] = {
         {
                 {
@@ -590,6 +567,36 @@ static const bool piece_shapes[8][4][4][4] = {
         }
 };
 
+static enum tetrimino next_random_piece(void) {
+        if (spawn_next_i == 7) {
+                spawn_next_i = 0;
+                memcpy(spawn_order, spawn_order+7, 7*sizeof(enum tetrimino));
+        }
+                
+        if (spawn_next_i == 0)
+                shuffle(spawn_order+7, 7);
+                
+        return spawn_order[spawn_next_i++];
+}
+
+static enum tetris_color playfield[TETRIS_PLAYFIELD_Y][TETRIS_PLAYFIELD_X];
+
+static enum tetrimino current_piece = TETRIMINO_TEST;
+static enum tetrimino_rotation current_piece_rotation = SPAWN_ROTATED;
+static struct coord current_piece_location = { 5, 20 };
+
+static struct coord current_shadow_location;
+
+static void draw(int stx, int edx, int sty, int edy, enum tetris_color c) {
+        enable_color(c, false);
+        for (int x=stx; x<edx; x++) {
+                for (int y=sty; y<edy; y++) {
+                        mvaddch(y, x, DRAWING_CHAR);
+                }
+        }
+        disable_color(c, false);
+}
+
 static void decide_rotation_offset_draw_tetrimino(enum tetrimino t,
                                                   enum tetrimino_rotation *r, int *ox, int *oy) {
         switch(t) {
@@ -657,13 +664,136 @@ static void draw_tetrimino(enum tetrimino t,int x, int y) {
         disable_color(piece_color(t), false);
 }
 
-static enum tetris_color playfield[TETRIS_PLAYFIELD_Y][TETRIS_PLAYFIELD_X];
+static void draw_background(int max_x, int max_y) {
+        draw(0, max_x, 0, max_y, TETRIS_COLOR_WHITE);
+}
 
-static enum tetrimino current_piece = TETRIMINO_TEST;
-static enum tetrimino_rotation current_piece_rotation = SPAWN_ROTATED;
-static struct coord current_piece_location = { 5, 20 };
+static void draw_playfield(int stx, int edx, int sty, int edy) {
+        (void)edx;
+        (void)edy;
+        
+        for (int j=TETRIS_PLAYFIELD_Y/2; j<TETRIS_PLAYFIELD_Y; j++) {
+                for (int i=0; i<TETRIS_PLAYFIELD_X; i++) {
+                        int x = i - current_piece_location.x;
+                        int y = j - current_piece_location.y;
 
-static struct coord current_shadow_location;
+                        int xs = i - current_shadow_location.x;
+                        int ys = j - current_shadow_location.y;
+
+                        bool piece_in_range = (x >= 0 && x < 4 && y >= 0 && y < 4);
+                        bool shadow_in_range = (xs >= 0 && xs < 4 && ys >= 0 && ys < 4);
+                        
+                        enum tetris_color color;
+                        bool shadow;
+                        if (piece_in_range && piece_shapes[current_piece][current_piece_rotation][y][x]) {
+                                color = piece_color(current_piece);
+                                shadow = false;
+                        } else if (shadow_in_range && piece_shapes[current_piece][current_piece_rotation][ys][xs]) {
+                                color = piece_color(current_piece);
+                                shadow = true;
+                        } else {
+                                color = playfield[j][i];
+                                shadow = false;
+                        }
+                        
+                        enable_color(color, shadow);
+                        mvaddch(sty+j, stx+i*2, DRAWING_CHAR);
+                        mvaddch(sty+j, stx+i*2+1, DRAWING_CHAR);
+                        disable_color(color, shadow);
+                }
+        }
+}
+
+static void draw_nextarea(int stx, int edx, int sty, int edy) {
+        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
+        
+        mvprintw(sty+0, stx+1, "Next");
+
+        int midx = stx + (edx - stx)/2;
+        int midy = sty + (edy - sty)/2;
+        int midy1 = sty + (midy - sty)/2;
+        int midy2 = midy;
+        int midy3 = midy + (edy - midy)/2;
+
+        int tstx = midx - 2;
+        int tsty1 = midy1 - 2;
+        int tsty2 = midy2 - 2;
+        int tsty3 = midy3 - 2;
+
+        draw_tetrimino(spawn_order[spawn_next_i], tstx, tsty1);
+        draw_tetrimino(spawn_order[spawn_next_i+1], tstx, tsty2);
+        draw_tetrimino(spawn_order[spawn_next_i+2], tstx, tsty3);
+}
+
+static void draw_scorearea(int stx, int edx, int sty, int edy) {
+        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
+
+        mvprintw(sty+0, stx+1, "Score");
+        mvprintw(sty+1, stx+1, "%08ld", score);
+}
+
+static void draw_hiscorearea(int stx, int edx, int sty, int edy) {
+        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
+
+        mvprintw(sty+0, stx+1, "Hi-Score");
+        mvprintw(sty+1, stx+1, "%08ld", hiscore);
+}
+
+static void draw_holdarea(int stx, int edx, int sty, int edy) {
+        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
+
+        mvprintw(sty+0, stx+1, "Hold");
+        if (current_held_piece != TETRIMINO_TEST) {
+                int midx = stx + (edx - stx)/2;
+                int midy = sty + (edy - sty)/2;
+                int tstx = midx - 2;
+                int tsty = midy - 2;
+                draw_tetrimino(current_held_piece, tstx, tsty);
+        }
+}
+
+static void draw_controlsarea(int stx, int edx, int sty, int edy) {
+        int msglen = 32; // x/z:rotate c:hold p:pause q:quit
+        int total_space = edx-stx;
+        int spare_space = total_space - msglen;
+        int margin = spare_space / 2;
+                
+        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
+
+        int i=0;
+
+        // TODO: DRY this thing
+        
+        attron(A_BOLD);
+        mvaddch(sty, stx + margin + i, 'x'); i++;
+        attroff(A_BOLD);
+        
+        mvaddch(sty, stx + margin + i, '/'); i++;
+        
+        attron(A_BOLD);
+        mvaddch(sty, stx + margin + i, 'z'); i++;
+        attroff(A_BOLD);
+        
+        mvprintw(sty, stx + margin + i, ":rotate "); i+=strlen(":rotate ");
+        
+        attron(A_BOLD);
+        mvaddch(sty, stx + margin + i, 'c'); i++;
+        attroff(A_BOLD);
+        
+        mvprintw(sty, stx + margin + i, ":hold "); i+=strlen(":hold ");
+        
+        attron(A_BOLD);
+        mvaddch(sty, stx + margin + i, 'p'); i++;
+        attroff(A_BOLD);
+        
+        mvprintw(sty, stx + margin + i, ":pause "); i+=strlen(":pause ");
+        
+        attron(A_BOLD);
+        mvaddch(sty, stx + margin + i, 'q'); i++;
+        attroff(A_BOLD);
+        
+        mvprintw(sty, stx + margin + i, ":quit "); i+=strlen(":quit");
+}
 
 static bool can_hold = true;
 static bool hard_dropped = false;
@@ -727,6 +857,103 @@ static int clear_full_lines(void) {
         }
         
         return full_lines_count;
+}
+
+static void draw_screen(void) {
+        int max_x, max_y;
+        getmaxyx(stdscr, max_y, max_x); // it's a macro
+        
+        // center horizontally as if it was double its actual width
+        int pf_stx = max_x/2 - TETRIS_PLAYFIELD_X;
+        int pf_edx = max_x/2 + TETRIS_PLAYFIELD_X;
+        
+        // center vertically as if it was half its actual length
+        int pf_sty = max_y/2 - TETRIS_PLAYFIELD_Y/2 - TETRIS_PLAYFIELD_Y/4;
+        int pf_edy = max_y/2 + TETRIS_PLAYFIELD_Y/2 - TETRIS_PLAYFIELD_Y/4;
+        
+        int pf_sty_visible = pf_sty + TETRIS_PLAYFIELD_Y/2;
+        
+        int sc_stx = pf_edx + 3;
+        int sc_edx = sc_stx + SCORE_RECTANGLE_DRAW_X;
+        int sc_sty = pf_sty_visible;
+        int sc_edy = sc_sty + SCORE_RECTANGLE_DRAW_Y;
+        
+        int nx_stx = sc_stx;
+        int nx_edx = nx_stx + NEXT_RECTANGLE_DRAW_X;
+        int nx_sty = sc_edy + 2;
+        int nx_edy = nx_sty + NEXT_RECTANGLE_DRAW_Y;
+        
+        int hd_edx = pf_stx - 3;
+        int hd_stx = hd_edx - HOLD_RECTANGLE_DRAW_X;
+        int hd_sty = pf_sty_visible;
+        int hd_edy = hd_sty + HOLD_RECTANGLE_DRAW_Y;
+        
+        int hs_stx = hd_stx;
+        int hs_edx = hs_stx + SCORE_RECTANGLE_DRAW_X;
+        int hs_edy = pf_edy;
+        int hs_sty = hs_edy - SCORE_RECTANGLE_DRAW_Y;
+        
+        int cs_stx = hd_stx;
+        int cs_edx = nx_edx;
+        int cs_sty = pf_edy + 1;
+        int cs_edy = cs_sty + 1;
+        
+        draw_background(max_x, max_y);
+        draw_playfield(pf_stx, pf_edx, pf_sty, pf_edy);
+        draw_nextarea(nx_stx, nx_edx, nx_sty, nx_edy);
+        draw_scorearea(sc_stx, sc_edx, sc_sty, sc_edy);
+        draw_hiscorearea(hs_stx, hs_edx, hs_sty, hs_edy);
+        draw_holdarea(hd_stx, hd_edx, hd_sty, hd_edy);
+        draw_controlsarea(cs_stx, cs_edx, cs_sty, cs_edy);
+}
+
+static void draw_gameover(void) {
+        int max_x, max_y;
+        getmaxyx(stdscr, max_y, max_x);
+
+        int stx = max_x/2 - GAMEOVER_RECTANGLE_DRAW_X/2;
+        int edx = max_x/2 + GAMEOVER_RECTANGLE_DRAW_X/2;
+
+        int sty = max_y/2 - GAMEOVER_RECTANGLE_DRAW_Y/2;
+        int edy = max_y/2 + GAMEOVER_RECTANGLE_DRAW_Y/2;
+
+        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
+        draw(stx+1, edx-1, sty+1, edy-1, TETRIS_COLOR_RED);
+        draw(stx+2, edx-2, sty+2, edy-2, TETRIS_COLOR_BLACK);
+
+        static const char text[] = "GAME OVER";
+        static const unsigned textlen = sizeof(text) - 1;
+
+        int tx = stx + (edx - stx)/2 - textlen/2;
+        int ty = sty + (edy - sty)/2;
+        mvprintw(ty, tx, text);
+}
+
+static void game_over_draw(void) {
+        draw_screen();
+        draw_gameover();
+}
+
+static bool game_over_wait_input(void) {
+        static long us_until_next_read = INPUT_TIME_US;
+        
+        int c = getch();
+        if (us_until_next_read > 0) {
+                us_until_next_read -= DELAY_US;
+                return false;
+        }
+        return c != ERR;
+}
+
+__attribute__((noreturn))
+static void game_over_loop(void) {
+        for (;;) {
+                game_over_draw();
+                if (game_over_wait_input()) {
+                        exit(EXIT_SUCCESS);
+                }
+                usleep(DELAY_US);
+        }
 }
 
 static bool last_movement_was_spin = false;
@@ -800,7 +1027,7 @@ static void step(void) {
                         update_shadow_location();
 
                         if (collision(current_piece, current_piece_rotation, current_piece_location))
-                                exit(0); // Perfect Game Over screen right here
+                                game_over_loop();
                 }
         } else {
                 us_until_next_step -= DELAY_US;
@@ -1318,133 +1545,6 @@ static void process_input(void) {
         us_until_next_read = INPUT_TIME_US;
 }
 
-static void draw_playfield(int stx, int edx, int sty, int edy) {
-        (void)edx;
-        (void)edy;
-        
-        for (int j=TETRIS_PLAYFIELD_Y/2; j<TETRIS_PLAYFIELD_Y; j++) {
-                for (int i=0; i<TETRIS_PLAYFIELD_X; i++) {
-                        int x = i - current_piece_location.x;
-                        int y = j - current_piece_location.y;
-
-                        int xs = i - current_shadow_location.x;
-                        int ys = j - current_shadow_location.y;
-
-                        bool piece_in_range = (x >= 0 && x < 4 && y >= 0 && y < 4);
-                        bool shadow_in_range = (xs >= 0 && xs < 4 && ys >= 0 && ys < 4);
-                        
-                        enum tetris_color color;
-                        bool shadow;
-                        if (piece_in_range && piece_shapes[current_piece][current_piece_rotation][y][x]) {
-                                color = piece_color(current_piece);
-                                shadow = false;
-                        } else if (shadow_in_range && piece_shapes[current_piece][current_piece_rotation][ys][xs]) {
-                                color = piece_color(current_piece);
-                                shadow = true;
-                        } else {
-                                color = playfield[j][i];
-                                shadow = false;
-                        }
-                        
-                        enable_color(color, shadow);
-                        mvaddch(sty+j, stx+i*2, DRAWING_CHAR);
-                        mvaddch(sty+j, stx+i*2+1, DRAWING_CHAR);
-                        disable_color(color, shadow);
-                }
-        }
-}
-
-static void draw_nextarea(int stx, int edx, int sty, int edy) {
-        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
-        
-        mvprintw(sty+0, stx+1, "Next");
-
-        int midx = stx + (edx - stx)/2;
-        int midy = sty + (edy - sty)/2;
-        int midy1 = sty + (midy - sty)/2;
-        int midy2 = midy;
-        int midy3 = midy + (edy - midy)/2;
-
-        int tstx = midx - 2;
-        int tsty1 = midy1 - 2;
-        int tsty2 = midy2 - 2;
-        int tsty3 = midy3 - 2;
-
-        draw_tetrimino(spawn_order[spawn_next_i], tstx, tsty1);
-        draw_tetrimino(spawn_order[spawn_next_i+1], tstx, tsty2);
-        draw_tetrimino(spawn_order[spawn_next_i+2], tstx, tsty3);
-}
-
-static void draw_scorearea(int stx, int edx, int sty, int edy) {
-        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
-
-        mvprintw(sty+0, stx+1, "Score");
-        mvprintw(sty+1, stx+1, "%08ld", score);
-}
-
-static void draw_hiscorearea(int stx, int edx, int sty, int edy) {
-        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
-
-        mvprintw(sty+0, stx+1, "Hi-Score");
-        mvprintw(sty+1, stx+1, "%08ld", hiscore);
-}
-
-static void draw_holdarea(int stx, int edx, int sty, int edy) {
-        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
-
-        mvprintw(sty+0, stx+1, "Hold");
-        if (current_held_piece != TETRIMINO_TEST) {
-                int midx = stx + (edx - stx)/2;
-                int midy = sty + (edy - sty)/2;
-                int tstx = midx - 2;
-                int tsty = midy - 2;
-                draw_tetrimino(current_held_piece, tstx, tsty);
-        }
-}
-
-static void draw_controlsarea(int stx, int edx, int sty, int edy) {
-        int msglen = 32; // x/z:rotate c:hold p:pause q:quit
-        int total_space = edx-stx;
-        int spare_space = total_space - msglen;
-        int margin = spare_space / 2;
-                
-        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
-
-        int i=0;
-
-        // TODO: DRY this thing
-        
-        attron(A_BOLD);
-        mvaddch(sty, stx + margin + i, 'x'); i++;
-        attroff(A_BOLD);
-        
-        mvaddch(sty, stx + margin + i, '/'); i++;
-        
-        attron(A_BOLD);
-        mvaddch(sty, stx + margin + i, 'z'); i++;
-        attroff(A_BOLD);
-        
-        mvprintw(sty, stx + margin + i, ":rotate "); i+=strlen(":rotate ");
-        
-        attron(A_BOLD);
-        mvaddch(sty, stx + margin + i, 'c'); i++;
-        attroff(A_BOLD);
-        
-        mvprintw(sty, stx + margin + i, ":hold "); i+=strlen(":hold ");
-        
-        attron(A_BOLD);
-        mvaddch(sty, stx + margin + i, 'p'); i++;
-        attroff(A_BOLD);
-        
-        mvprintw(sty, stx + margin + i, ":pause "); i+=strlen(":pause ");
-        
-        attron(A_BOLD);
-        mvaddch(sty, stx + margin + i, 'q'); i++;
-        attroff(A_BOLD);
-        
-        mvprintw(sty, stx + margin + i, ":quit "); i+=strlen(":quit");
-}
-
 static void endwin_wrapper(void) {
         endwin();
 }
@@ -1808,52 +1908,7 @@ int main(void) {
         curs_set(0);
         
         for (;;) {
-                int max_x, max_y;
-                getmaxyx(stdscr, max_y, max_x); // it's a macro
-
-                // center horizontally as if it was double its actual width
-                int pf_stx = max_x/2 - TETRIS_PLAYFIELD_X;
-                int pf_edx = max_x/2 + TETRIS_PLAYFIELD_X;
-                
-                // center vertically as if it was half its actual length
-                int pf_sty = max_y/2 - TETRIS_PLAYFIELD_Y/2 - TETRIS_PLAYFIELD_Y/4;
-                int pf_edy = max_y/2 + TETRIS_PLAYFIELD_Y/2 - TETRIS_PLAYFIELD_Y/4;
-
-                int pf_sty_visible = pf_sty + TETRIS_PLAYFIELD_Y/2;
-
-                int sc_stx = pf_edx + 3;
-                int sc_edx = sc_stx + SCORE_RECTANGLE_DRAW_X;
-                int sc_sty = pf_sty_visible;
-                int sc_edy = sc_sty + SCORE_RECTANGLE_DRAW_Y;
-
-                int nx_stx = sc_stx;
-                int nx_edx = nx_stx + NEXT_RECTANGLE_DRAW_X;
-                int nx_sty = sc_edy + 2;
-                int nx_edy = nx_sty + NEXT_RECTANGLE_DRAW_Y;
-
-                int hd_edx = pf_stx - 3;
-                int hd_stx = hd_edx - HOLD_RECTANGLE_DRAW_X;
-                int hd_sty = pf_sty_visible;
-                int hd_edy = hd_sty + HOLD_RECTANGLE_DRAW_Y;
-
-                int hs_stx = hd_stx;
-                int hs_edx = hs_stx + SCORE_RECTANGLE_DRAW_X;
-                int hs_edy = pf_edy;
-                int hs_sty = hs_edy - SCORE_RECTANGLE_DRAW_Y;
-
-                int cs_stx = hd_stx;
-                int cs_edx = nx_edx;
-                int cs_sty = pf_edy + 1;
-                int cs_edy = cs_sty + 1;
-
-                draw_background(max_x, max_y);
-                draw_playfield(pf_stx, pf_edx, pf_sty, pf_edy);
-                draw_nextarea(nx_stx, nx_edx, nx_sty, nx_edy);
-                draw_scorearea(sc_stx, sc_edx, sc_sty, sc_edy);
-                draw_hiscorearea(hs_stx, hs_edx, hs_sty, hs_edy);
-                draw_holdarea(hd_stx, hd_edx, hd_sty, hd_edy);
-                draw_controlsarea(cs_stx, cs_edx, cs_sty, cs_edy);
-
+                draw_screen();
                 process_input();
                 step();
 
@@ -1864,7 +1919,6 @@ int main(void) {
         return EXIT_SUCCESS;
 }
 
-// TODO: Game over screen
 // TODO: Instructions when calling with -h or help or --help
 // TODO: Version information and other memes (-v --version)
 // TODO: Add paused screen (should hide game state)
