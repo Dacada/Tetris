@@ -3,6 +3,7 @@
 
 #include <ncurses.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,11 +26,14 @@
 
 #define DRAWING_CHAR '#'
 
-#define SINGLE_SCORE 100;
-#define DOUBLE_SCORE 300;
-#define T_SPIN_SCORE 400;
-#define TRIPLE_SCORE 500;
-#define TETRIS_SCORE 800;
+#define SINGLE_SCORE 100
+#define DOUBLE_SCORE 300
+#define T_SPIN_SCORE 400
+#define TRIPLE_SCORE 500
+#define TETRIS_SCORE 800
+
+#define MAX_TOTAL_HISCORE_FILEPATH_LENGTH 1024
+#define HISCORE_FILE "myTetris/hiscore.txt"
 
 enum tetris_color {
         TETRIS_COLOR_BLACK,
@@ -186,6 +190,137 @@ static void shuffle(enum tetrimino *arr, int size) {
                 enum tetrimino tmp = arr[i];
                 arr[i] = arr[j];
                 arr[j] = tmp;
+        }
+}
+
+// ensure we don't wrte *dest beyond *n characters and at the end modify *n to
+// indicate how many characters of src we wrote. If we didn't write fully dest,
+// return false otherwise true
+static bool mystrncpy(char **dest, const char *src, size_t *n) {
+        while (*src != '\0') {
+                if (*n <= 0) {
+                        return false;
+                }
+                
+                **dest = *src;
+                
+                (*dest)++;
+                src++;
+                
+                (*n)--;
+        }
+
+        return true;
+}
+
+static bool get_hiscore_filename(char *result, size_t maxsize) {
+        const char *base = getenv("XDG_DATA_HOME");
+        if (base == NULL) {
+                const char *home = getenv("HOME");
+                if (home == NULL) {
+                        return false;
+                }
+
+                if (!mystrncpy(&result, home, &maxsize)) {
+                        return false;
+                }
+                if (!mystrncpy(&result, "/.local/share", &maxsize)) {
+                        return false;
+                }
+        } else {
+                if (!mystrncpy(&result, base, &maxsize)) {
+                        return false;
+                }
+        }
+
+        if (!mystrncpy(&result, "/" HISCORE_FILE, &maxsize)) {
+                return false;
+        }
+        return true;
+}
+
+static bool create_directory_if_not_exists(const char *dir) {
+        struct stat st;
+        
+        if (stat(dir, &st) == -1) {
+                if (mkdir(dir, 0700) == -1) {
+                        perror(dir);
+                        return false;
+                }
+        }
+
+        return true;
+}
+
+static bool make_directory_exist(const char *filename) {
+        char *directory = strdup(filename);
+        
+        size_t i = 0;
+        for (;;) {
+                while (directory[i] != '/' && directory[i] != '\0') {
+                        i++;
+                }
+                
+                if (directory[i] == '\0' || directory[i+1] == '\0') {
+                        break;
+                }
+                
+                i++;
+                char c = directory[i];
+                directory[i] = '\0';
+                if (!create_directory_if_not_exists(directory)) {
+                        return false;
+                }
+                directory[i] = c;
+        }
+        
+        free(directory);
+        return true;
+}
+
+static long score;
+static long hiscore;
+
+static void init_hiscore(void) {
+        hiscore = 0;
+        
+        static char hiscore_filename[MAX_TOTAL_HISCORE_FILEPATH_LENGTH];
+        if (get_hiscore_filename(hiscore_filename, MAX_TOTAL_HISCORE_FILEPATH_LENGTH)) {
+                FILE *f = fopen(hiscore_filename, "r");
+                if (f != NULL) {
+                        fscanf(f, "%ld", &hiscore);
+                        fclose(f);
+                } else {
+                        perror("Hiscore was not loaded");
+                }
+        } else {
+                fprintf(stderr, "Hiscore was not loaded: Could not safely determine path.\n");
+        }
+}
+
+static void save_hiscore(void) {
+        static char hiscore_filename[MAX_TOTAL_HISCORE_FILEPATH_LENGTH];
+        if (get_hiscore_filename(hiscore_filename, MAX_TOTAL_HISCORE_FILEPATH_LENGTH)) {
+                if (make_directory_exist(hiscore_filename)) {
+                        FILE *f = fopen(hiscore_filename, "w");
+                        if (f != NULL) {
+                                fprintf(f, "%ld", hiscore);
+                                fclose(f);
+                        } else {
+                                perror("Hiscore was not saved");
+                        }
+                } else {
+                        fprintf(stderr, "Hiscore was not saved: Could not create parent directory.\n");
+                }
+        } else {
+                fprintf(stderr, "Hiscore was not saved: Could not safely determine path.\n");
+        }
+}
+
+static void update_score(long value) {
+        score += value;
+        if (score > hiscore) {
+                hiscore = score;
         }
 }
 
@@ -522,8 +657,6 @@ static void draw_tetrimino(enum tetrimino t,int x, int y) {
         disable_color(piece_color(t), false);
 }
 
-static long score;
-
 static enum tetris_color playfield[TETRIS_PLAYFIELD_Y][TETRIS_PLAYFIELD_X];
 
 static enum tetrimino current_piece = TETRIMINO_TEST;
@@ -626,7 +759,7 @@ static void step(void) {
                                         count++;
 
                                 if (count >= 3)
-                                        score += T_SPIN_SCORE;
+                                        update_score(T_SPIN_SCORE);
                         }
                         last_movement_was_spin = false;
 
@@ -645,16 +778,16 @@ static void step(void) {
 
                         while (full_lines_count > 0) {
                                 if (full_lines_count == 1) {
-                                        score += SINGLE_SCORE;
+                                        update_score(SINGLE_SCORE);
                                         break;
                                 } else if (full_lines_count == 2) {
-                                        score += DOUBLE_SCORE;
+                                        update_score(DOUBLE_SCORE);
                                         break;
                                 } else if (full_lines_count == 3) {
-                                        score += TRIPLE_SCORE;
+                                        update_score(TRIPLE_SCORE);
                                         break;
                                 } else if (full_lines_count >= 4) {
-                                        score += TETRIS_SCORE;
+                                        update_score(TETRIS_SCORE);
                                         full_lines_count -= 4;
                                 }
                         }
@@ -1249,6 +1382,13 @@ static void draw_scorearea(int stx, int edx, int sty, int edy) {
         mvprintw(sty+1, stx+1, "%08ld", score);
 }
 
+static void draw_hiscorearea(int stx, int edx, int sty, int edy) {
+        draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
+
+        mvprintw(sty+0, stx+1, "Hi-Score");
+        mvprintw(sty+1, stx+1, "%08ld", hiscore);
+}
+
 static void draw_holdarea(int stx, int edx, int sty, int edy) {
         draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
 
@@ -1624,6 +1764,9 @@ static void test_row_clear(void) {
 #endif /* DEBUG */
 
 int main(void) {
+        init_hiscore();
+        atexit(save_hiscore);
+        
         srandom(time(NULL));
         init_shuffle_pieces();
         current_piece = next_random_piece();
@@ -1678,7 +1821,6 @@ int main(void) {
 
                 int pf_sty_visible = pf_sty + TETRIS_PLAYFIELD_Y/2;
 
-                // Take into account that playfield is drawn as twice its actual size
                 int sc_stx = pf_edx + 3;
                 int sc_edx = sc_stx + SCORE_RECTANGLE_DRAW_X;
                 int sc_sty = pf_sty_visible;
@@ -1694,6 +1836,11 @@ int main(void) {
                 int hd_sty = pf_sty_visible;
                 int hd_edy = hd_sty + HOLD_RECTANGLE_DRAW_Y;
 
+                int hs_stx = hd_stx;
+                int hs_edx = hs_stx + SCORE_RECTANGLE_DRAW_X;
+                int hs_edy = pf_edy;
+                int hs_sty = hs_edy - SCORE_RECTANGLE_DRAW_Y;
+
                 int cs_stx = hd_stx;
                 int cs_edx = nx_edx;
                 int cs_sty = pf_edy + 1;
@@ -1703,6 +1850,7 @@ int main(void) {
                 draw_playfield(pf_stx, pf_edx, pf_sty, pf_edy);
                 draw_nextarea(nx_stx, nx_edx, nx_sty, nx_edy);
                 draw_scorearea(sc_stx, sc_edx, sc_sty, sc_edy);
+                draw_hiscorearea(hs_stx, hs_edx, hs_sty, hs_edy);
                 draw_holdarea(hd_stx, hd_edx, hd_sty, hd_edy);
                 draw_controlsarea(cs_stx, cs_edx, cs_sty, cs_edy);
 
@@ -1721,4 +1869,3 @@ int main(void) {
 // TODO: Version information and other memes (-v --version)
 // TODO: Add paused screen (should hide game state)
 // TODO: Better colors
-// TODO: High scores system
