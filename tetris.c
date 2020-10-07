@@ -668,9 +668,18 @@ static void draw_background(int max_x, int max_y) {
         draw(0, max_x, 0, max_y, TETRIS_COLOR_WHITE);
 }
 
+static bool paused = false;
+
 static void draw_playfield(int stx, int edx, int sty, int edy) {
-        (void)edx;
-        (void)edy;
+        if (paused) {
+                draw(stx, edx, sty + TETRIS_PLAYFIELD_Y/2, edy, TETRIS_COLOR_BLACK);
+                const char text[] = "PAUSED";
+                const unsigned textlen = sizeof(text);
+                int x = stx + (edx - stx)/2 - textlen/2;
+                int y = sty + 3*(edy - sty)/4;
+                mvprintw(y, x, text);
+                return;
+        }
         
         for (int j=TETRIS_PLAYFIELD_Y/2; j<TETRIS_PLAYFIELD_Y; j++) {
                 for (int i=0; i<TETRIS_PLAYFIELD_X; i++) {
@@ -761,8 +770,6 @@ static void draw_controlsarea(int stx, int edx, int sty, int edy) {
         draw(stx, edx, sty, edy, TETRIS_COLOR_BLACK);
 
         int i=0;
-
-        // TODO: DRY this thing
         
         attron(A_BOLD);
         mvaddch(sty, stx + margin + i, 'x'); i++;
@@ -957,7 +964,6 @@ static void game_over_loop(void) {
 }
 
 static bool last_movement_was_spin = false;
-static bool paused = false;
 
 static long us_until_next_step = STEP_TIME_US;
 static void step(void) {
@@ -1919,7 +1925,4 @@ int main(void) {
         return EXIT_SUCCESS;
 }
 
-// TODO: Instructions when calling with -h or help or --help
-// TODO: Version information and other memes (-v --version)
-// TODO: Add paused screen (should hide game state)
 // TODO: Better colors
