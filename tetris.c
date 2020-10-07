@@ -1894,7 +1894,7 @@ int main(void) {
         init_pair(4, COLOR_GREEN, COLOR_GREEN);
         init_pair(5, COLOR_RED, COLOR_RED);
         init_pair(6, COLOR_BLUE, COLOR_BLUE);
-        init_pair(7, COLOR_RED, COLOR_YELLOW);
+        init_pair(7, COLOR_YELLOW, COLOR_YELLOW); // This should be orange, but we don't have this color.
         
         init_pair(8, COLOR_BLACK, COLOR_BLACK);
         init_pair(9, COLOR_WHITE, COLOR_WHITE);
@@ -1905,7 +1905,7 @@ int main(void) {
         init_pair(13, COLOR_GREEN, COLOR_BLACK);
         init_pair(14, COLOR_RED, COLOR_BLACK);
         init_pair(15, COLOR_BLUE, COLOR_BLACK);
-        init_pair(16, COLOR_RED, COLOR_BLACK);
+        init_pair(16, COLOR_YELLOW, COLOR_BLACK); // This should be orange, but we don't have this color.
         
         noecho();
         raw();
@@ -1924,5 +1924,3 @@ int main(void) {
 
         return EXIT_SUCCESS;
 }
-
-// TODO: Better colors
