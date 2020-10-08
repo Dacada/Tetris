@@ -9,13 +9,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 
 
 // Defines
 
 #define DELAY_US 30000L
-#define STEP_TIME_US 500000L
 #define INPUT_TIME_US 100000L
 
 #define TETRIS_PLAYFIELD_X 10
@@ -26,6 +26,9 @@
 
 #define SCORE_RECTANGLE_DRAW_X 12
 #define SCORE_RECTANGLE_DRAW_Y 2
+
+#define LEVEL_RECTANGLE_DRAW_X 12
+#define LEVEL_RECTANGLE_DRAW_Y 2
 
 #define HOLD_RECTANGLE_DRAW_X 12
 #define HOLD_RECTANGLE_DRAW_Y 6
@@ -40,6 +43,13 @@
 #define T_SPIN_SCORE 400
 #define TRIPLE_SCORE 500
 #define TETRIS_SCORE 800
+#define SOFT_DROP_SCORE 1
+#define HARD_DROP_SCORE 2
+
+#define SINGLE_LEVEL_SCORE 1
+#define DOUBLE_LEVEL_SCORE 3
+#define TRIPLE_LEVEL_SCORE 5
+#define TETRIS_LEVEL_SCORE 8
 
 #define MAX_TOTAL_HISCORE_FILEPATH_LENGTH 1024
 #define HISCORE_FILE "myTetris/hiscore.txt"
@@ -91,7 +101,7 @@ enum input_type {
         INPUT_EXIT
 };
 
-struct coord {
+struct point {
         int x;
         int y;
 };
@@ -311,7 +321,7 @@ static const bool piece_shapes[8][4][4][4] = {
         }
 };
 
-static const struct coord wall_kicks[2][8][5] = {
+static const struct point wall_kicks[2][8][5] = {
         // All pieces except O and I
         {
                 // 0 => 1
@@ -640,9 +650,9 @@ static enum tetris_color playfield[TETRIS_PLAYFIELD_Y][TETRIS_PLAYFIELD_X];
 
 static enum tetrimino current_piece = TETRIMINO_TEST;
 static enum tetrimino_rotation current_piece_rotation = SPAWN_ROTATED;
-static struct coord current_piece_location = { 5, 20 };
+static struct point current_piece_location = { 5, 20 };
 
-static struct coord current_shadow_location;
+static struct point current_shadow_location;
 
 static bool paused = false;
 
@@ -651,7 +661,10 @@ static bool hard_dropped = false;
 
 static bool last_movement_was_spin = false;
 
-static long us_until_next_step = STEP_TIME_US;
+static long us_until_next_step = 1000000L;
+
+static unsigned level = 1;
+static int goal = 5;
 
 
 
@@ -842,7 +855,7 @@ static enum tetris_color piece_color(enum tetrimino t) {
 // Drawing functions
 
 static void decide_rotation_offset_draw_tetrimino(enum tetrimino t,
-                                                  enum tetrimino_rotation *r, struct coord *o) {
+                                                  enum tetrimino_rotation *r, struct point *o) {
         switch(t) {
         case TETRIMINO_TEST:
                 *r = SPAWN_ROTATED;
@@ -887,7 +900,7 @@ static void decide_rotation_offset_draw_tetrimino(enum tetrimino t,
         }
 }
 
-static void draw(struct coord st, struct coord ed, enum tetris_color c) {
+static void draw(struct point st, struct point ed, enum tetris_color c) {
         enable_color(c, false);
         for (int x=st.x; x<ed.x; x++) {
                 for (int y=st.y; y<ed.y; y++) {
@@ -897,11 +910,11 @@ static void draw(struct coord st, struct coord ed, enum tetris_color c) {
         disable_color(c, false);
 }
 
-static void draw_tetrimino(enum tetrimino t, struct coord c) {
+static void draw_tetrimino(enum tetrimino t, struct point c) {
         enable_color(piece_color(t), false);
         
         enum tetrimino_rotation r = SPAWN_ROTATED;
-        struct coord o = {0, 0};
+        struct point o = {0, 0};
         decide_rotation_offset_draw_tetrimino(t, &r, &o);
         
         for (int j=0; j<4; j++) {
@@ -917,13 +930,13 @@ static void draw_tetrimino(enum tetrimino t, struct coord c) {
         disable_color(piece_color(t), false);
 }
 
-static void draw_background(struct coord max) {
-        draw((struct coord){0, 0}, max, TETRIS_COLOR_WHITE);
+static void draw_background(struct point max) {
+        draw((struct point){0, 0}, max, TETRIS_COLOR_WHITE);
 }
 
-static void draw_playfield(struct coord st, struct coord ed) {
+static void draw_playfield(struct point st, struct point ed) {
         if (paused) {
-                struct coord bst;
+                struct point bst;
                 bst.x = st.x;
                 bst.y = st.y + TETRIS_PLAYFIELD_Y/2;
                 draw(bst, ed, TETRIS_COLOR_BLACK);
@@ -938,11 +951,11 @@ static void draw_playfield(struct coord st, struct coord ed) {
         
         for (int j=TETRIS_PLAYFIELD_Y/2; j<TETRIS_PLAYFIELD_Y; j++) {
                 for (int i=0; i<TETRIS_PLAYFIELD_X; i++) {
-                        struct coord c;
+                        struct point c;
                         c.x = i - current_piece_location.x;
                         c.y = j - current_piece_location.y;
 
-                        struct coord s;
+                        struct point s;
                         s.x = i - current_shadow_location.x;
                         s.y = j - current_shadow_location.y;
 
@@ -970,7 +983,7 @@ static void draw_playfield(struct coord st, struct coord ed) {
         }
 }
 
-static void draw_nextarea(struct coord st, struct coord ed) {
+static void draw_nextarea(struct point st, struct point ed) {
         draw(st, ed, TETRIS_COLOR_BLACK);
         
         mvprintw(st.y+0, st.x+1, "Next");
@@ -981,7 +994,7 @@ static void draw_nextarea(struct coord st, struct coord ed) {
         int midy2 = midy;
         int midy3 = midy + (ed.y - midy)/2;
 
-        struct coord tst1, tst2, tst3;
+        struct point tst1, tst2, tst3;
         tst1.x = tst2.x = tst3.x = midx - 2;
         tst1.y = midy1 - 2;
         tst2.y = midy2 - 2;
@@ -992,33 +1005,40 @@ static void draw_nextarea(struct coord st, struct coord ed) {
         draw_tetrimino(spawn_order[spawn_next_i+2], tst3);
 }
 
-static void draw_scorearea(struct coord st, struct coord ed) {
+static void draw_scorearea(struct point st, struct point ed) {
         draw(st, ed, TETRIS_COLOR_BLACK);
 
         mvprintw(st.y+0, st.x+1, "Score");
-        mvprintw(st.y+1, st.x+1, "%08ld", score);
+        mvprintw(st.y+1, st.x+1, "%010ld", score);
 }
 
-static void draw_hiscorearea(struct coord st, struct coord ed) {
+static void draw_hiscorearea(struct point st, struct point ed) {
         draw(st, ed, TETRIS_COLOR_BLACK);
 
         mvprintw(st.y+0, st.x+1, "Hi-Score");
-        mvprintw(st.y+1, st.x+1, "%08ld", hiscore);
+        mvprintw(st.y+1, st.x+1, "%010ld", hiscore);
 }
 
-static void draw_holdarea(struct coord st, struct coord ed) {
+static void draw_levelarea(struct point st, struct point ed) {
+        draw(st, ed, TETRIS_COLOR_BLACK);
+        
+        mvprintw(st.y+0, st.x+1, "Level");
+        mvprintw(st.y+1, st.x+1, "%10d", level);
+}
+
+static void draw_holdarea(struct point st, struct point ed) {
         draw(st, ed, TETRIS_COLOR_BLACK);
 
         mvprintw(st.y+0, st.x+1, "Hold");
         if (current_held_piece != TETRIMINO_TEST) {
-                struct coord tst;
+                struct point tst;
                 tst.x = st.x + (ed.x - st.x)/2 - 2;
                 tst.y = st.y + (ed.y - st.y)/2 - 2;
                 draw_tetrimino(current_held_piece, tst);
         }
 }
 
-static void draw_controlsarea(struct coord st, struct coord ed) {
+static void draw_controlsarea(struct point st, struct point ed) {
         int msglen = 32; // x/z:rotate c:hold p:pause q:quit
         int total_space = ed.x-st.x;
         int spare_space = total_space - msglen;
@@ -1060,11 +1080,11 @@ static void draw_controlsarea(struct coord st, struct coord ed) {
 }
 
 static void draw_screen(void) {
-        struct coord max;
+        struct point max;
         getmaxyx(stdscr, max.y, max.x); // it's a macro
         
         // center horizontally as if it was double its actual width
-        struct coord pf_st, pf_ed;
+        struct point pf_st, pf_ed;
         pf_st.x = max.x/2 - TETRIS_PLAYFIELD_X;
         pf_ed.x = max.x/2 + TETRIS_PLAYFIELD_X;
         
@@ -1074,35 +1094,41 @@ static void draw_screen(void) {
         
         int pf_sty_visible = pf_st.y + TETRIS_PLAYFIELD_Y/2;
 
-        struct coord sc_st, sc_ed;
+        struct point sc_st, sc_ed;
         sc_st.x = pf_ed.x + 3;
         sc_ed.x = sc_st.x + SCORE_RECTANGLE_DRAW_X;
         sc_st.y = pf_sty_visible;
         sc_ed.y = sc_st.y + SCORE_RECTANGLE_DRAW_Y;
 
-        struct coord nx_st, nx_ed;
+        struct point nx_st, nx_ed;
         nx_st.x = sc_st.x;
         nx_ed.x = nx_st.x + NEXT_RECTANGLE_DRAW_X;
         nx_st.y = sc_ed.y + 2;
         nx_ed.y = nx_st.y + NEXT_RECTANGLE_DRAW_Y;
 
-        struct coord hd_st, hd_ed;
+        struct point hd_st, hd_ed;
         hd_ed.x = pf_st.x - 3;
         hd_st.x = hd_ed.x - HOLD_RECTANGLE_DRAW_X;
         hd_st.y = pf_sty_visible;
         hd_ed.y = hd_st.y + HOLD_RECTANGLE_DRAW_Y;
 
-        struct coord hs_st, hs_ed;
+        struct point hs_st, hs_ed;
         hs_st.x = hd_st.x;
         hs_ed.x = hs_st.x + SCORE_RECTANGLE_DRAW_X;
         hs_ed.y = pf_ed.y;
         hs_st.y = hs_ed.y - SCORE_RECTANGLE_DRAW_Y;
 
-        struct coord cs_st, cs_ed;
+        struct point cs_st, cs_ed;
         cs_st.x = hd_st.x;
         cs_ed.x = nx_ed.x;
         cs_st.y = pf_ed.y + 1;
         cs_ed.y = cs_st.y + 1;
+
+        struct point lv_st, lv_ed;
+        lv_st.x = hs_st.x;
+        lv_ed.x = lv_st.x + LEVEL_RECTANGLE_DRAW_X;
+        lv_ed.y = hs_st.y - 2;
+        lv_st.y = lv_ed.y - LEVEL_RECTANGLE_DRAW_Y;
         
         draw_background(max);
         draw_playfield(pf_st, pf_ed);
@@ -1111,13 +1137,14 @@ static void draw_screen(void) {
         draw_hiscorearea(hs_st, hs_ed);
         draw_holdarea(hd_st, hd_ed);
         draw_controlsarea(cs_st, cs_ed);
+        draw_levelarea(lv_st, lv_ed);
 }
 
 static void draw_gameover_screen(void) {
-        struct coord max;
+        struct point max;
         getmaxyx(stdscr, max.y, max.x);
 
-        struct coord st, ed;
+        struct point st, ed;
         st.x = max.x/2 - GAMEOVER_RECTANGLE_DRAW_X/2;
         ed.x = max.x/2 + GAMEOVER_RECTANGLE_DRAW_X/2;
 
@@ -1126,7 +1153,7 @@ static void draw_gameover_screen(void) {
 
         draw(st, ed, TETRIS_COLOR_BLACK);
 
-        struct coord st1, ed1;
+        struct point st1, ed1;
         st1.x = st.x + 1;
         st1.y = st.y + 1;
         ed1.x = st.x - 1;
@@ -1134,7 +1161,7 @@ static void draw_gameover_screen(void) {
         
         draw(st1, ed1, TETRIS_COLOR_RED);
 
-        struct coord st2, ed2;
+        struct point st2, ed2;
         st2.x = st.x + 2;
         st2.y = st.y + 2;
         ed2.x = st.x - 2;
@@ -1145,7 +1172,7 @@ static void draw_gameover_screen(void) {
         static const char text[] = "GAME OVER";
         static const unsigned textlen = sizeof(text) - 1;
 
-        struct coord t;
+        struct point t;
         t.x = st.x + (ed.x - st.x)/2 - textlen/2;
         t.y = st.y + (ed.y - st.y)/2;
         mvprintw(t.y, t.x, text);
@@ -1283,7 +1310,12 @@ static void save_hiscore(void) {
 }
 
 static void update_score(long value) {
-        score += value;
+        if (value == SOFT_DROP_SCORE || value == HARD_DROP_SCORE) {
+                score += value;
+        } else {
+                score += value * level;
+        }
+        
         if (score > hiscore) {
                 hiscore = score;
         }
@@ -1313,10 +1345,23 @@ static enum tetrimino next_random_piece(void) {
 
 // Gameplay functions
 
-static bool collision(enum tetrimino piece, enum tetrimino_rotation rotation, struct coord location) {
+static long get_step_time(void) {
+        double time = pow(0.8 - ((double)level - 1) * 0.007, (double)level - 1) * 1e6;
+        return (long)time;
+}
+
+static void update_level(int lines_score) {
+        goal -= lines_score;
+        while (goal <= 0) {
+                goal += level * 5;
+                level++;
+        }
+}
+
+static bool collision(enum tetrimino piece, enum tetrimino_rotation rotation, struct point location) {
         for (int j=0; j<4; j++) {
                 for (int i=0; i<4; i++) {
-                        struct coord c;
+                        struct point c;
                         c.x = location.x + i;
                         c.y = location.y + j;
                         
@@ -1391,7 +1436,7 @@ static void step(void) {
                 return;
         
         if (us_until_next_step <= 0) {
-                us_until_next_step = STEP_TIME_US;
+                us_until_next_step = get_step_time();
                 current_piece_location.y += 1;
                 if (collision(current_piece, current_piece_rotation, current_piece_location)) {
                         hard_dropped = false;
@@ -1428,21 +1473,23 @@ static void step(void) {
                         }
 
                         int full_lines_count = clear_full_lines();
-
-                        while (full_lines_count > 0) {
-                                if (full_lines_count == 1) {
-                                        update_score(SINGLE_SCORE);
-                                        break;
-                                } else if (full_lines_count == 2) {
-                                        update_score(DOUBLE_SCORE);
-                                        break;
-                                } else if (full_lines_count == 3) {
-                                        update_score(TRIPLE_SCORE);
-                                        break;
-                                } else if (full_lines_count >= 4) {
-                                        update_score(TETRIS_SCORE);
-                                        full_lines_count -= 4;
-                                }
+                        switch (full_lines_count) {
+                        case 1:
+                                update_score(SINGLE_SCORE);
+                                update_level(SINGLE_LEVEL_SCORE);
+                                break;
+                        case 2:
+                                update_score(DOUBLE_SCORE);
+                                update_level(DOUBLE_LEVEL_SCORE);
+                                break;
+                        case 3:
+                                update_score(TRIPLE_SCORE);
+                                update_level(TRIPLE_LEVEL_SCORE);
+                                break;
+                        case 4:
+                                update_score(TETRIS_SCORE);
+                                update_level(TETRIS_LEVEL_SCORE);
+                                break;
                         }
                         
                         current_piece = next_random_piece();
@@ -1510,9 +1557,9 @@ static bool rotate(enum tetrimino_rotation next) {
         else
                 return false;
 
-        struct coord curr_coords = current_piece_location;
+        struct point curr_coords = current_piece_location;
         for (int k=0; k<5; k++) {
-                struct coord c = wall_kicks[i][j][k];
+                struct point c = wall_kicks[i][j][k];
 
                 current_piece_rotation = next;
                 current_piece_location.x += c.x;
@@ -1564,9 +1611,10 @@ static void process_input(void) {
                 case INPUT_HARD_DROP:
                         while (!collision(current_piece, current_piece_rotation, current_piece_location)) {
                                 current_piece_location.y++;
+                                update_score(HARD_DROP_SCORE);
                         }
                         current_piece_location.y--;
-                        us_until_next_step = STEP_TIME_US;
+                        us_until_next_step = get_step_time();
                         hard_dropped = true;
                         break;
                 
@@ -1581,7 +1629,7 @@ static void process_input(void) {
                                 current_piece_rotation = SPAWN_ROTATED;
                                 current_piece_location.x = 5;
                                 current_piece_location.y = 20;
-                                us_until_next_step = STEP_TIME_US;
+                                us_until_next_step = get_step_time();
                                 can_hold = false;
                                 last_movement_was_spin = false;
                                 update_shadow_location();
@@ -1591,17 +1639,18 @@ static void process_input(void) {
                 case INPUT_COUNTERCLOCKWISE_ROTATION:
                         if (rotate((current_piece_rotation - 1) % 4)) {
                                 last_movement_was_spin = true;
-                                //us_until_next_step = STEP_TIME_US;
+                                //us_until_next_step = get_step_time();
                                 update_shadow_location();
                         }
                         break;
                 
                 case INPUT_SOFT_DROP:
                         current_piece_location.y += 1;
+                        update_score(SOFT_DROP_SCORE);
                         if (collision(current_piece, current_piece_rotation, current_piece_location))
                                 current_piece_location.y -= 1;
                         else
-                                us_until_next_step = STEP_TIME_US;
+                                us_until_next_step = get_step_time();
                         break;
                 
                 case INPUT_LEFT:
@@ -1609,7 +1658,7 @@ static void process_input(void) {
                         if (collision(current_piece, current_piece_rotation, current_piece_location)) {
                                 current_piece_location.x += 1;
                         } else {
-                                //us_until_next_step = STEP_TIME_US;
+                                //us_until_next_step = get_step_time();
                                 update_shadow_location();
                         }
                         break;
@@ -1619,7 +1668,7 @@ static void process_input(void) {
                         if (collision(current_piece, current_piece_rotation, current_piece_location)) {
                                 current_piece_location.x -= 1;
                         } else {
-                                //us_until_next_step = STEP_TIME_US;
+                                //us_until_next_step = get_step_time();
                                 update_shadow_location();
                         }
                         break;
@@ -1977,5 +2026,5 @@ int main(void) {
         return EXIT_SUCCESS;
 }
 
-// TODO: Difficulty, delay between steps steadily decreases.
 // TODO: Come up with a name that isn't "tetris"
+// TODO: Do not show hold or next during pause either
