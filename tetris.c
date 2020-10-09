@@ -985,8 +985,11 @@ static void draw_playfield(struct point st, struct point ed) {
 
 static void draw_nextarea(struct point st, struct point ed) {
         draw(st, ed, TETRIS_COLOR_BLACK);
-        
         mvprintw(st.y+0, st.x+1, "Next");
+
+        if (paused) {
+                return;
+        }
 
         int midx = st.x + (ed.x - st.x)/2;
         int midy = st.y + (ed.y - st.y)/2;
@@ -1028,8 +1031,12 @@ static void draw_levelarea(struct point st, struct point ed) {
 
 static void draw_holdarea(struct point st, struct point ed) {
         draw(st, ed, TETRIS_COLOR_BLACK);
-
         mvprintw(st.y+0, st.x+1, "Hold");
+
+        if (paused) {
+                return;
+        }
+        
         if (current_held_piece != TETRIMINO_TEST) {
                 struct point tst;
                 tst.x = st.x + (ed.x - st.x)/2 - 2;
