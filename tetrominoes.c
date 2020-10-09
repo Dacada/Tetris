@@ -52,7 +52,7 @@
 #define TETRIS_LEVEL_SCORE 8
 
 #define MAX_TOTAL_HISCORE_FILEPATH_LENGTH 1024
-#define HISCORE_FILE "myTetris/hiscore.txt"
+#define HISCORE_FILE "tetrominoes/hiscore.txt"
 
 
 
@@ -2032,6 +2032,3 @@ int main(void) {
 
         return EXIT_SUCCESS;
 }
-
-// TODO: Come up with a name that isn't "tetris"
-// TODO: Do not show hold or next during pause either
